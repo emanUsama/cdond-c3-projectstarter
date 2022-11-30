@@ -252,7 +252,7 @@ jobs:
 
   run-migrations:
     docker:
-      - image: cimg/python:3.10 
+      - image: cimg/python:3.11.0-node  
     steps:
       - checkout
       - install-awscli
@@ -338,7 +338,7 @@ jobs:
            tsc --init
            echo tsc --version
       - add_ssh_keys:
-          fingerprints: ["7b:24:6a:c4:2e:2e:d4:4b:52:49:0b:19:de:90:af:59"] 
+          fingerprints: ["11:8a:73:08:7b:13:1f:bb:4c:99:b9:61:e7:c7:d0:e6"]
       - run:
           name: Package Backend
           command: |
