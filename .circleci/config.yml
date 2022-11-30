@@ -434,7 +434,7 @@ jobs:
         - run:
             name: Remove old stack workflow 
             command: |
-              export OldWorkflowID=$(curl --insecure https://kvdb.io/hw6KQtMQosxLJgUHxcCJY/OldWorkflowID)
+              export OldWorkflowID=$(curl --insecure https://kvdb.io/PKFzL1zHxZwg3dSSbQgoxU/OldWorkflowID)
               echo OldWorkflowID: "${OldWorkflowID}"
               echo CIRCLE_WORKFLOW_ID "${CIRCLE_WORKFLOW_ID:0:7}"        
               export STACKS=($(aws cloudformation list-stacks --query "StackSummaries[*].StackName" \
