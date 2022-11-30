@@ -28,7 +28,7 @@ commands:
           when: on_fail
           command: |
             # Curl command here to see if there was a successful migration associated with the workflow id, store result in SUCCESS variable
-            SUCCESS=$(curl --insecure https://kvdb.io/hw6KQtMQosxLJgUHxcCJY/migration_<<parameters.workflow_id>>)
+            SUCCESS=$(curl --insecure https://kvdb.io/PKFzL1zHxZwg3dSSbQgoxU/migration_<<parameters.workflow_id>>)
             if(( $SUCCESS==1 )); 
             then
              cd backend
@@ -75,8 +75,7 @@ jobs:
     steps:
       - checkout
       - restore_cache:
-          keys:
-            - frontend-deps-{{ checksum "frontend/package-lock.json" }}
+          keys: [frontend-build]
       - run:
           name: Install dependencies
           command: |
@@ -89,7 +88,7 @@ jobs:
             npm run build
       - save_cache:
           paths: [frontend/node_modules]
-          key: frontend-deps-{{ checksum "frontend/package-lock.json" }}
+          key: frontend-build
           
   build-backend:
     docker:
@@ -97,8 +96,7 @@ jobs:
     steps:
     - checkout
     - restore_cache:
-       keys:
-         - backend-deps-{{ checksum "backend/package-lock.json" }}
+          keys: [backend-build]
     - run:
         name: Install dependencies
         command: |
@@ -111,7 +109,7 @@ jobs:
           npm run build
     - save_cache:
         paths: [backend/node_modules]
-        key: backend-deps-{{ checksum "backend/package-lock.json" }}
+        key: backend-build
 
   test-frontend:
     docker:
@@ -120,7 +118,7 @@ jobs:
     - checkout
     - restore_cache:
        keys:
-         - frontend-deps-{{ checksum "frontend/package-lock.json" }}
+         - frontend-build
     - run:
         name: Install dependencies
         command: |
@@ -139,7 +137,7 @@ jobs:
     - checkout
     - restore_cache:
        keys:
-         - backend-deps-{{ checksum "backend/package-lock.json" }}
+         - backend-build
     - run:
         name: Install dependencies
         command: |
@@ -158,7 +156,7 @@ jobs:
     - checkout
     - restore_cache:
        keys:
-         - frontend-deps-{{ checksum "frontend/package-lock.json" }}
+         - frontend-build
     - run:
         name: Install dependencies
         command: |
@@ -179,7 +177,7 @@ jobs:
     - checkout
     - restore_cache:
        keys:
-         - backend-deps-{{ checksum "backend/package-lock.json" }}
+         - backend-build
     - run:
         name: Install dependencies
         command: |
@@ -202,7 +200,7 @@ jobs:
       - run:
           name: Ensure back-end infrastructure exists
           command: |
-            aw cloudformation deploy \
+            aws cloudformation deploy \
               --template-file .circleci/files/backend.yml \
               --tags project=project3 \
               --stack-name "udapeople-backend-${CIRCLE_WORKFLOW_ID:0:7}" \
@@ -232,103 +230,174 @@ jobs:
             - project/.circleci/ansible/inventory.txt
       - destroy_environment     
 
-#   configure-infrastructure:
-#     docker:
-#       # Docker image here that supports Ansible
-#     steps:
-#       # Checkout code from git
-#       # Add ssh keys with fingerprint
-#       # attach workspace
-#       - run:
-#           name: Install dependencies
-#           command: |
-#             # Your code here
-#             exit 1
-#       - run:
-#           name: Configure server
-#           command: |
-#             # Your code here
-#             exit 1
-#       # Here's where you will add some code to rollback on failure      
+  configure-infrastructure:
+    docker:
+      - image: cimg/python:3.10   
+    steps:
+      - checkout
+      - install-awscli
+      - install-ansible
+      - install-node
+      - add_ssh_keys:
+          fingerprints: ["11:8a:73:08:7b:13:1f:bb:4c:99:b9:61:e7:c7:d0:e6"] 
+      - attach_workspace:
+          at: ~/
+      - run:
+          name: Configure server
+          command: |
+            cd .circleci/ansible
+            cat inventory.txt
+            ansible-playbook -i inventory.txt configure-server.yml
+      - destroy_environment      
 
-#   run-migrations:
-#     docker:
-#       # Docker image here that supports NodeJS
-#     steps:
-#       # Checkout code from git
-#       - run:
-#           name: Run migrations
-#           command: |
-#             # Your code here
-#             exit 1
-#       - run:
-#           name: Send migration results to memstash
-#           command: |
-#             # Your code here
-#             exit 1
-#      # Here's where you will add some code to rollback on failure      
+  run-migrations:
+    docker:
+      - image: cimg/python:3.10 
+    steps:
+      - checkout
+      - install-awscli
+      - install-ansible
+      - install-node
+      - restore_cache:
+          keys:
+            - build-backend
+      - run:
+          name: install tsc
+          command: |
+           npm install typescript@latest -g
+           tsc --init
+           echo tsc --version
+      - run:
+          name: Run migrations
+          command: |
+            cd backend
+            npm i
+            npm run build
+            npm run migrations > migrations_dump.txt
+      - run:
+          name: Send migration results to kvdb
+          command: |
+            # Your code here
+            if grep -q "has been executed successfully." ~/project/backend/migrations_dump.txt
+            then
+              curl https://kvdb.io/PKFzL1zHxZwg3dSSbQgoxU/migration_${CIRCLE_WORKFLOW_ID:0:7}  -d '1'
+            fi
+      - destroy_environment
+      - revert-migrations    
 
-#   deploy-frontend:
-#     docker:
-#       # Docker image here that supports AWS CLI
-#     steps:
-#       # Checkout code from git
-#       - run:
-#           name: Install dependencies
-#           command: |
-#             # your code here
-#       - run:
-#           name: Get backend url
-#           command: |
-#             # your code here
-#             export API_URL="http://${BACKEND_IP}:3030"
-#             echo "${API_URL}"
-#       - run:
-#           name: Deploy frontend objects
-#           command: |
-#             # your code here
-#       # Here's where you will add some code to rollback on failure      
+  deploy-frontend:
+    docker:
+      - image: cimg/python:3.10 
+    steps:
+      - checkout
+      - install-awscli
+      - install-node
+      - restore_cache:
+          keys: [frontend-build]
+      - add_ssh_keys:
+          fingerprints: ["11:8a:73:08:7b:13:1f:bb:4c:99:b9:61:e7:c7:d0:e6"]
+      - run:
+          name: Install dependencies
+          command: |
+            cd frontend
+            npm install
+      - run:
+          name: Get backend url
+          command: |
+            BACKEND_AWS_PUBLIC_IP=$(aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=backend-${CIRCLE_WORKFLOW_ID:0:7}" \
+              --query 'Reservations[*].Instances[*].PublicIpAddress' \
+              --output text)
+             API_URL="http://${BACKEND_AWS_PUBLIC_IP}:3030"
+             echo "API_URL=${API_URL}" >> frontend/.env
+             cat frontend/.env
+      - run:
+          name: Deploy frontend objects
+          command: |
+            cd frontend
+            npm install
+            npm run build
+            aws s3 cp dist s3://udapeople-${CIRCLE_WORKFLOW_ID:0:7} --recursive
+      - destroy_environment      
                     
-#   deploy-backend:
-#     docker:
-#       # Docker image here that supports Ansible
-#     steps:
-#       # Checkout code from git
-#       # Add ssh keys with fingerprint
-#       # attach workspace
-#       - run:
-#           name: Install dependencies
-#           command: |
-#             # your code here
-#       - run:
-#           name: Deploy backend
-#           command: |
-#             # your code here
-#       # Here's where you will add some code to rollback on failure  
+  deploy-backend:
+    docker:
+      - image: cimg/python:3.10  
+    steps:
+      - checkout
+      - install-awscli
+      - install-ansible
+      - restore_cache:
+          keys: [backend-build]
+      - attach_workspace:
+          at: ~/
+      - run:
+          name: install tsc
+          command: |
+           npm install typescript@latest -g
+           tsc --init
+           echo tsc --version
+      - add_ssh_keys:
+          fingerprints: ["7b:24:6a:c4:2e:2e:d4:4b:52:49:0b:19:de:90:af:59"] 
+      - run:
+          name: Package Backend
+          command: |
+            cd backend
+            npm run build
+            tar -czf artifact.tar.gz dist/* package*
+            cd ..
+            cp backend/artifact.tar.gz .circleci/ansible/roles/deploy/files
+      - run:
+          name: Deploy backend
+          command: |
+            cd .circleci/ansible
+            cat inventory.txt
+            ansible-playbook -i inventory.txt deploy-backend.yml
+      - destroy_environment  
+      - revert-migrations 
 
-#   smoke-test:
-#     docker:
-#       # Lightweight Docker image 
-#     steps:
-#       # Checkout code from git
-#       - run:
-#           name: Install dependencies
-#           command: |
-#             # your code here
-#       - run:
-#           name: Get backend url
-#           command: |
-#             # your code here
-#       - run:
-#           name: Backend smoke test.
-#           command: |
-#             # your code here
-#       - run:
-#           name: Frontend smoke test.
-#           command: |
-#             # your code here
-#       # Here's where you will add some code to rollback on failure  
+  smoke-test:
+    docker:
+      - image: python:3.7-alpine3.11
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ~/
+      - run:
+          name: Install dependencies
+          command: |
+            apk add --update curl
+            pip install awscli
+      - run:
+          name: Get backend url
+          command: |
+            BACKEND_AWS_PUBLIC_IP=$(aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=backend-${CIRCLE_WORKFLOW_ID:0:7}" \
+              --query 'Reservations[*].Instances[*].PublicIpAddress' \
+              --output text)
+             API_URL="http://${BACKEND_AWS_PUBLIC_IP}:3030"
+             if curl "${API_URL}/api/status" | grep "ok"
+              then
+                  return 0
+              else
+                  return 1
+              fi
+          
+      - run:
+          name: Frontend smoke test.
+          command: |
+            URL="http://udapeople-${CIRCLE_WORKFLOW_ID:0:7}.s3-website-us-east-3.amazonaws.com"             
+            echo ${URL} 
+            if curl -s ${URL} | grep "Welcome"
+            then
+              exit 0
+            else
+              exit 1
+            fi   
+      # Here's where you will add some code to rollback on failure  
 
+      - destroy_environment  
+      - revert-migrations
 #   cloudfront-update:
 #     docker:
 #       # Docker image here that supports AWS CLI
@@ -382,16 +451,16 @@ workflows:
           filters:
             branches:
               only: [master]
-      # - configure-infrastructure:
-      #     requires: [deploy-infrastructure]
-      # - run-migrations:
-      #     requires: [configure-infrastructure]
-      # - deploy-frontend:
-      #     requires: [run-migrations]
-      # - deploy-backend:
-      #     requires: [run-migrations]
-      # - smoke-test:
-      #     requires: [deploy-backend, deploy-frontend]
+      - configure-infrastructure:
+          requires: [deploy-infrastructure]
+      - run-migrations:
+          requires: [configure-infrastructure]
+      - deploy-frontend:
+          requires: [run-migrations]
+      - deploy-backend:
+          requires: [run-migrations]
+      - smoke-test:
+          requires: [deploy-backend, deploy-frontend]
       # - cloudfront-update:
       #     requires: [smoke-test]
       # - cleanup:
